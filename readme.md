@@ -79,7 +79,8 @@ Status: SUCCESS (Multi-block bit-exact match, 0 retransmissions)
 
 1. **Native Physical Broadcast vs. Peer Mesh:** In an RF broadcast environment, what is the recommended locator/transport configuration to ensure Zenoh leverages native L2/L3 broadcast rather than replicating packets across individual peer unicast sessions?
 2. **Symbol Granularity vs. Batching:** For 512B–1KB droplets over low-baud links (e.g., 900MHz serial meshes or 802.11ah HaLow), is publishing individual droplets as discrete Zenoh samples idiomatic (relying on Zenoh's internal transport batching), or is explicit application-layer batching preferred to minimize L2/L3 framing overhead?
-3. **Inter-Peer Repair (Queryables vs. Storages):** When an edge node is short by $N$ droplets to solve a specific block, is an on-demand Queryable targeting `sbn` dynamically generating fresh repair symbols preferred over native Zenoh Storages?
+3. **Inter-Peer Repair (Queryables vs. Storages):** When an edge node is short a few packets to solve a specific block, is an on-demand Queryable dynamically generating fresh repair symbols preferred over native Zenoh Storages or other built-in patterns?
+   * *Note: The repair Queryable in `meshorchestrator.py` is currently an initial proof-of-concept interface. Broadcaster-side symbol generation is stubbed out while gathering feedback on whether Queryables are the right pattern here.*
 
 ---
 
