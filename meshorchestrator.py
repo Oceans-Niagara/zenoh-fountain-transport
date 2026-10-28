@@ -217,7 +217,7 @@ class AtomicStorageManager:
             handle.write(fragment_bytes)
 
             count = self._unflushed_counts[cid] + 1
-            if count >= self.sync_batch_size or self._queue.empty():
+            if count >= self.sync_batch_size:
                 handle.flush()
                 os.fsync(handle.fileno())
                 self._unflushed_counts[cid] = 0
@@ -269,6 +269,7 @@ class MeshOrchestrator:
         self.jobs: Dict[str, dict] = {}
         self.completed_cids: Dict[str, bytes] = {}
         self.latest_telemetry: Dict[str, dict] = {}
+        self.latest_command: Optional[dict] = None
         self._subs = []
         self._queryables = []
 
@@ -385,6 +386,9 @@ class MeshOrchestrator:
         if not cmd:
             return
 
+        with self.lock:
+            self.latest_command = cmd
+
         if cmd.get("action") == "REBUILD":
             self.rebuild_payload(cmd.get("cid"))
 
@@ -448,7 +452,12 @@ class MeshOrchestrator:
             pass
         return added
 
-    def broadcast_file(self, fountain_bin_path: str = "fountain_output.bin", delay_sec: float = 0.003) -> bool:
+    def broadcast_file(
+        self,
+        fountain_bin_path: str = "fountain_output.bin",
+        delay_sec: Optional[float] = None,
+        target_kbps: Optional[int] = 128
+    ) -> bool:
         if not os.path.exists(fountain_bin_path):
             return False
 
@@ -476,12 +485,58 @@ class MeshOrchestrator:
             priority=zenoh.Priority.DATA_LOW
         )
 
+        target_bps = None
+        if delay_sec is not None and delay_sec > 0:
+            target_bps = 512.0 / delay_sec
+        elif target_kbps is not None and target_kbps > 0:
+            target_bps = (target_kbps * 1000.0) / 8.0
+
+        start_time = time.perf_counter()
+        bytes_sent = 0
+
         for frag in fragments:
             enc_frag = self.security.ztunnel.encrypt(frag)
             pub.put(enc_frag)
-            if delay_sec > 0:
-                time.sleep(delay_sec)
+            bytes_sent += len(enc_frag)
 
+            if target_bps:
+                expected_time = bytes_sent / target_bps
+                elapsed = time.perf_counter() - start_time
+                delta = expected_time - elapsed
+                if delta > 0.001:
+                    time.sleep(delta)
+
+        pub.undeclare()
+        return True
+
+    def send_command(self, target_id: str, action: str, extra_params: Optional[dict] = None) -> bool:
+        cmd_dict = {"action": action, "target": target_id.upper()}
+        if extra_params:
+            cmd_dict.update(extra_params)
+
+        signed_payload = self.security.sign_command(cmd_dict)
+        topic = f"course/command/{target_id.upper()}"
+        pub = self.session.declare_publisher(
+            topic,
+            congestion_control=zenoh.CongestionControl.BLOCK,
+            priority=zenoh.Priority.DATA_HIGH
+        )
+        pub.put(signed_payload)
+        pub.undeclare()
+        return True
+
+    def send_telemetry(self, telemetry_data: dict) -> bool:
+        telemetry_data["id"] = self.node_id
+        telemetry_data["ts"] = time.time()
+        raw = cbor_dumps(telemetry_data)
+        encrypted = self.security.ztunnel.encrypt(raw)
+        topic = f"course/telemetry/{self.node_id}"
+        pub = self.session.declare_publisher(
+            topic,
+            congestion_control=zenoh.CongestionControl.BLOCK,
+            priority=zenoh.Priority.DATA_HIGH
+        )
+        pub.put(encrypted)
         pub.undeclare()
         return True
 

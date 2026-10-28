@@ -54,7 +54,7 @@ def run_demo():
 
     print("\nStreaming interleaved droplets across Zenoh (simulating 25% radio drop)...")
     t_start = time.time()
-    base.broadcast_file(FOUNTAIN_BIN, delay_sec=0.003)
+    base.broadcast_file(FOUNTAIN_BIN, target_kbps=128)
     t_end = time.time()
 
     time.sleep(1.0)
@@ -72,14 +72,15 @@ def run_demo():
         solve_ms = (time.perf_counter() - t0) * 1000
         print(f"Assembly & Hash Time: {solve_ms:.2f} ms")
 
-        test_cmd = {"action": "ENGAGE_CUTTER", "target": "MOWER_1"}
-        signed = base.security.sign_command(test_cmd)
-        verified = mower.security.verify_command(signed)
+        base.send_command("MOWER_1", "ENGAGE_CUTTER")
+        time.sleep(0.2)  # Allow Zenoh sample delivery
+
+        verified = mower.latest_command
         if verified and verified.get("action") == "ENGAGE_CUTTER":
-            print("Security: SUCCESS (Ed25519 whitelisted command verified)")
+            print("Security: SUCCESS (Ed25519 whitelisted command delivered via Zenoh DATA_HIGH)")
             print("Status: SUCCESS (Multi-block bit-exact match, 0 retransmissions)")
         else:
-            print("Security: FAILURE")
+            print("Security: FAILURE (Command not received or verification failed)")
             print("Status: FAILURE")
     else:
         print("Status: FAILURE (Incomplete blocks or hash mismatch)")

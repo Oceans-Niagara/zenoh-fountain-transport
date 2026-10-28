@@ -26,6 +26,7 @@ In large-scale field deployments (autonomous turf machinery, agricultural rovers
 * **Mutual Ed25519 Whitelisting & AEAD Encryption:** Transit data uses ChaCha20-Poly1305. Remote commands require Ed25519 signatures verified against an explicit pre-shared keyring, coupled with monotonic sequence tracking persisted to disk for nodes lacking RTC or NTP synchronization.
 * **Asynchronous Edge Journaling:** Received fragments append to disk storage via a non-blocking queue and background thread with batched `fsync` boundaries to protect the Zenoh network reactor from I/O stalls and flash wear.
 * **Best-Effort Pacing:** Employs Zenoh's `CongestionControl.DROP` and `Priority.DATA_LOW` alongside paced dispatch to prevent overflowing physical radio queues.
+* **Differentiated QoS & Traffic Policies:** Bulk fountain maps are paced at 128 kbps using Priority.DATA_LOW (CongestionControl.DROP), while safety-critical control commands and telemetry pings bypass background transfer queues using Priority.DATA_HIGH (CongestionControl.BLOCK).
 
 ---
 
@@ -55,10 +56,10 @@ Total Droplets  : 111
 Streaming interleaved droplets across Zenoh (simulating 25% radio drop)...
 
 Ingested: 83, Dropped: 28
-Broadcast Duration: 0.38s
+Broadcast Duration: 3.82s
 Solved Blocks: 3 of 3
 Assembly & Hash Time: 0.62 ms
-Security: SUCCESS (Ed25519 whitelisted command verified)
+Security: SUCCESS (Ed25519 whitelisted command delivered via Zenoh DATA_HIGH)
 Status: SUCCESS (Multi-block bit-exact match, 0 retransmissions)
 ```
 
@@ -78,9 +79,8 @@ Status: SUCCESS (Multi-block bit-exact match, 0 retransmissions)
 ## Community Discussion & Feedback
 
 1. **Native Physical Broadcast vs. Peer Mesh:** In an RF broadcast environment, what is the recommended locator/transport configuration to ensure Zenoh leverages native L2/L3 broadcast rather than replicating packets across individual peer unicast sessions?
-2. **Symbol Granularity vs. Batching:** For 512B–1KB droplets over low-baud links (e.g., 900MHz serial meshes or 802.11ah HaLow), is publishing individual droplets as discrete Zenoh samples idiomatic (relying on Zenoh's internal transport batching), or is explicit application-layer batching preferred to minimize L2/L3 framing overhead?
+2. **Symbol Granularity vs. Native Batching:** For 512B droplets throttled to sub-GHz link capacities (e.g., 128 kbps), does Zenoh's internal link-layer batching (`transport.link.tx.batching`) provide measurable throughput gains over application-layer pacing, or does it risk introducing latency spikes on high-priority command channels?
 3. **Inter-Peer Repair (Queryables vs. Storages):** When an edge node is short a few packets to solve a specific block, is an on-demand Queryable dynamically generating fresh repair symbols preferred over native Zenoh Storages or other built-in patterns?
-   * *Note: The repair Queryable in `meshorchestrator.py` is currently an initial proof-of-concept interface. Broadcaster-side symbol generation is stubbed out while gathering feedback on whether Queryables are the right pattern here.*
 
 ---
 

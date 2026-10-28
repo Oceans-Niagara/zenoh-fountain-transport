@@ -64,6 +64,7 @@ def encode_file(source_file: str, output_fountain: str = "fountain_output.bin", 
         raw_bytes = f.read()
 
     cid_hex, header, packets, num_blocks = encode_bytes(raw_bytes, symbol_size=mtu, redundancy=redundancy, max_block_symbols=max_block_symbols)
+    comp_size = struct.unpack(HEADER_FORMAT, header)[4]
 
     with open(output_fountain, "wb") as f:
         f.write(header)
@@ -73,7 +74,7 @@ def encode_file(source_file: str, output_fountain: str = "fountain_output.bin", 
 
     return {
         "cid": cid_hex,
-        "compressed_size": len(zlib.compress(raw_bytes)),
+        "compressed_size": comp_size,
         "original_size": len(raw_bytes),
         "packets": len(packets),
         "num_blocks": num_blocks,
